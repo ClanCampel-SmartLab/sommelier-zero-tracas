@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration de Sommelier Zero Tracas",
+        "description": "Pour utiliser l'assistant, vous avez besoin d'une clé API Google Gemini.\n\n[Obtenir ma clé API Gemini gratuitement](https://aistudio.google.com/app/apikey)",
+        "data": {
+          "api_key": "Clé API Gemini"
+        }
+      }
+    }
+  }
+}
