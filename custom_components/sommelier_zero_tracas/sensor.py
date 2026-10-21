@@ -1,13 +1,13 @@
 """Capteur d'inventaire pour Sommelier Zero Tracas."""
 from homeassistant.helpers.entity import Entity
-from .ai_engine import SommelierAiEngine
+from .ai_engine import SommelierAIEngine
 
 DOMAIN = "sommelier_zero_tracas"
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Configuration du capteur de cave."""
     api_key = config_entry.data.get("api_key")
-    ai_engine = SommelierAiEngine(api_key)
+    ai_engine = SommelierAIEngine(api_key)
     
     sensor = SommelierWineCellarSensor(hass, ai_engine)
     async_add_entities([sensor], True)
