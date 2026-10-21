@@ -1,1 +1,9 @@
-
+scan_etiquette:
+  name: Scanner une étiquette
+  description: Analyse la photo d'une étiquette de vin via l'IA Gemini.
+  fields:
+    image_path:
+      name: Chemin de l'image
+      description: Le chemin absolu du fichier image sur le serveur.
+      required: true
+      example: "/config/www/vin.jpg"
