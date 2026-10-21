@@ -1,1 +1,13 @@
-
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sommelier Zero Tracas",
+        "description": "Pour utiliser l'intégration, renseignez votre clé API Google Gemini.\n\n[Obtenir une clé API Gemini](https://aistudio.google.com/app/apikey)",
+        "data": {
+          "api_key": "Clé API Gemini"
+        }
+      }
+    }
+  }
+}
