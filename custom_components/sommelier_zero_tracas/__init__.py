@@ -11,7 +11,6 @@ DOMAIN = "sommelier_zero_tracas"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configuration de l'intégration depuis l'UI."""
-    # Importation directe de la classe depuis ai_engine
     from .ai_engine import SommelierAIEngine
 
     api_key = entry.data.get("api_key")
@@ -25,12 +24,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_scan_etiquette(call: ServiceCall):
         image_path = call.data.get("image_path")
-        if not os.path.exists(image_path):
+
+        def read_file():
+            if not os.path.exists(image_path):
+                return None
+            with open(image_path, "rb") as img_file:
+                return img_file.read()
+
+        # Execute la lecture du fichier hors du thread principal pour eviter le warning HA
+        img_bytes = await hass.async_add_executor_job(read_file)
+
+        if img_bytes is None:
             _LOGGER.error("Fichier image introuvable : %s", image_path)
             return
-
-        with open(image_path, "rb") as img_file:
-            img_bytes = img_file.read()
 
         res = await ai_engine.analyze_wine_label(img_bytes)
         _LOGGER.info("Résultat de l'analyse Gemini : %s", res)
