@@ -33,44 +33,46 @@ class SommelierAIEngine:
         """Initialise le moteur avec la clé API."""
         self.api_key = api_key
 
+    def _sync_analyze(self, image_bytes: bytes) -> dict:
+        """Exécution synchrone isolée dans un thread pour éviter les appels bloquants HA."""
+        from google import genai
+        from google.genai import types
+
+        # Forcer la version v1 de l'API pour éviter les erreurs v1beta 404
+        client = genai.Client(
+            api_key=self.api_key,
+            http_options=types.HttpOptions(api_version="v1"),
+        )
+
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type="image/jpeg",
+        )
+
+        config = types.GenerateContentConfig(
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True
+            )
+        )
+
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
+            config=config,
+        )
+
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+
+        return json.loads(raw_text.strip())
+
     async def analyze_wine_label(self, image_bytes: bytes) -> dict:
-        """Envoie l'image de l'étiquette à Gemini et retourne les données du vin."""
+        """Envoie l'image de l'étiquette à Gemini hors de la boucle d'événements HA."""
         try:
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(api_key=self.api_key)
-
-            image_part = types.Part.from_bytes(
-                data=image_bytes,
-                mime_type="image/jpeg",
-            )
-
-            # Configuration pour désactiver l'AFC et supprimer l'avertissement Google
-            config = types.GenerateContentConfig(
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-            )
-
-            def _call_gemini():
-                return client.models.generate_content(
-                    model="gemini-1.5-flash",
-                    contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
-                    config=config,
-                )
-
-            response = await asyncio.to_thread(_call_gemini)
-
-            raw_text = response.text.strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-
-            return json.loads(raw_text.strip())
-
-        except Exception as err:
-            _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
-            return {"error": str(err)}
+            return await asyncio.to_thread(self._sync_analyze, image_bytes)
         except Exception as err:
             _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
             return {"error": str(err)}
