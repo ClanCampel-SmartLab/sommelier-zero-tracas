@@ -2,7 +2,6 @@
 import logging
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import callback
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "sommelier_zero_tracas"
@@ -17,9 +16,7 @@ class SommelierConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            api_key = user_input.get("api_key")
-            
-            # Validation de la présence de la clé sans import externe
+            api_key = user_input.get("api_key", "").strip()
             if not api_key:
                 errors["base"] = "invalid_api_key"
             else:
