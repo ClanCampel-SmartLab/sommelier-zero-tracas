@@ -1,77 +1,147 @@
 """Moteur d'intelligence artificielle Gemini pour Sommelier Zero Tracas."""
+
 import asyncio
 import json
 import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+# Alias de modele : sa version cible peut evoluer chez Google.
+GEMINI_MODEL = "gemini-flash-latest"
+
 PROMPT_ANALYSE_ETIQUETTE = """
-Tu es un sommelier expert. Analyse cette photo d'étiquette de vin et extrais les informations suivantes.
-Réponds EXCLUSIVEMENT sous la forme d'un objet JSON valide sans balises Markdown supplémentaires, avec cette structure exacte :
+Tu es un sommelier expert.
+
+Analyse cette photo d'etiquette de vin et extrais les informations
+lisibles. N'invente pas de faits sur ce vin.
+
+Reponds exclusivement avec un objet JSON valide, sans balises Markdown,
+avec exactement les cles suivantes :
 
 {
   "domaine": "Nom du domaine ou chateau",
   "cuvee": "Nom de la cuvee s'il y en a une, sinon null",
   "millesime": 2020,
-  "appellation": "AOP/AOC/IGP (ex: Saint-Emilion, Cotes du Rhone)",
-  "region": "Region viticole (ex: Bordeaux, Val de Loire)",
-  "couleur": "Rouge, Blanc, Rose, ou Etincelant",
+  "appellation": "AOP/AOC/IGP, par exemple Saint-Emilion",
+  "region": "Region viticole, par exemple Bordeaux",
+  "couleur": "Rouge, Blanc, Rose ou Etincelant",
   "cepages": ["Cepage 1", "Cepage 2"],
-  "garde_conseillee_annees": "Plage d'apogee recommandee (ex: 2025-2030)",
+  "garde_conseillee_annees": "Plage d'apogee, par exemple 2025-2030",
   "accord_mets": ["Accord 1", "Accord 2"],
-  "description_sommelier": "Une courte description du profil gustatif en 2 phrases."
+  "description_sommelier": "Courte description en deux phrases."
 }
 
-Si une information est illisible ou absente, met la valeur null.
+Regles :
+- Si une information factuelle est illisible, absente ou incertaine,
+  utilise la valeur JSON null, et non la chaine de caracteres "null".
+- Le millesime doit etre un nombre entier ou null.
+- Les cepages doivent etre une liste de textes ou null.
+- Les accords mets doivent etre une liste de textes ou null.
+- Les recommandations de garde, les accords et la description sont
+  des estimations : indique-le clairement dans les textes concernes.
+- Ne presente pas une estimation comme une information lue sur l'etiquette.
+- Si la photo ne permet pas d'identifier suffisamment le vin, utilise
+  null pour les recommandations et la description.
 """
 
 
 class SommelierAIEngine:
-    """Gestionnaire des appels à l'API Gemini via google-genai."""
+    """Gestionnaire des appels a l'API Gemini via google-genai."""
 
     def __init__(self, api_key: str):
-        """Initialise le moteur avec la clé API."""
-        self.api_key = api_key
+        """Initialise le moteur avec la cle API."""
+        self.api_key = api_key.strip()
 
     def _sync_analyze(self, image_bytes: bytes) -> dict:
-        """Exécution synchrone isolée dans un thread pour éviter les appels bloquants HA."""
+        """Execute l'appel synchrone dans un thread distinct."""
         from google import genai
         from google.genai import types
 
-        client = genai.Client(
-            api_key=self.api_key,
-            http_options=types.HttpOptions(api_version="v1"),
-        )
+        if not self.api_key:
+            raise ValueError("La cle API Gemini est vide.")
 
-        image_part = types.Part.from_bytes(
-            data=image_bytes,
-            mime_type="image/jpeg",
-        )
+        if not image_bytes:
+            raise ValueError("L'image envoyee est vide.")
 
-        config = types.GenerateContentConfig(
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                disable=True
+        client = genai.Client(api_key=self.api_key)
+
+        try:
+            image_part = types.Part.from_bytes(
+                data=image_bytes,
+                mime_type="image/jpeg",
             )
-        )
 
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
-            config=config,
-        )
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                automatic_function_calling=(
+                    types.AutomaticFunctionCallingConfig(
+                        disable=True,
+                    )
+                ),
+            )
 
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[
+                    PROMPT_ANALYSE_ETIQUETTE,
+                    image_part,
+                ],
+                config=config,
+            )
 
-        return json.loads(raw_text.strip())
+            raw_text = (response.text or "").strip()
+
+            if not raw_text:
+                raise ValueError(
+                    "Gemini n'a renvoye aucun texte exploitable. "
+                    "La reponse peut avoir ete bloquee ou etre incomplete."
+                )
+
+            try:
+                result = json.loads(raw_text)
+            except json.JSONDecodeError as err:
+                raise ValueError(
+                    "La reponse de Gemini n'est pas un JSON valide "
+                    f"(ligne {err.lineno}, colonne {err.colno})."
+                ) from err
+
+            if not isinstance(result, dict):
+                raise ValueError(
+                    "Gemini a renvoye un JSON, mais pas un objet."
+                )
+
+            expected_keys = (
+                "domaine",
+                "cuvee",
+                "millesime",
+                "appellation",
+                "region",
+                "couleur",
+                "cepages",
+                "garde_conseillee_annees",
+                "accord_mets",
+                "description_sommelier",
+            )
+
+            # Conserve les cles attendues et complete les absentes.
+            return {
+                key: result.get(key)
+                for key in expected_keys
+            }
+
+        finally:
+            client.close()
 
     async def analyze_wine_label(self, image_bytes: bytes) -> dict:
-        """Envoie l'image de l'étiquette à Gemini hors de la boucle d'événements HA."""
+        """Analyse l'image sans bloquer la boucle d'evenements HA."""
         try:
-            return await asyncio.to_thread(self._sync_analyze, image_bytes)
+            return await asyncio.to_thread(
+                self._sync_analyze,
+                image_bytes,
+            )
         except Exception as err:
-            _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
+            _LOGGER.exception(
+                "Erreur lors de l'analyse Gemini avec le modele %s",
+                GEMINI_MODEL,
+            )
             return {"error": str(err)}
