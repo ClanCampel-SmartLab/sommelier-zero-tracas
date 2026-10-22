@@ -25,7 +25,7 @@ Si une information est illisible ou absente, met la valeur null.
 """
 
 class SommelierAIEngine:
-    """Gestionnaire des appels à l'API Gemini."""
+    """Gestionnaire des appels à l'API Gemini via google-genai."""
 
     def __init__(self, api_key: str):
         """Initialise le moteur avec la clé API."""
@@ -34,19 +34,19 @@ class SommelierAIEngine:
     async def analyze_wine_label(self, image_bytes: bytes) -> dict:
         """Envoie l'image de l'étiquette à Gemini et retourne les données du vin."""
         try:
-            # Import différé : s'exécute seulement au scan, pas au lancement de HA
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types
 
-            genai.configure(api_key=self.api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            client = genai.Client(api_key=self.api_key)
 
-            image_data = {
-                "mime_type": "image/jpeg",
-                "data": image_bytes
-            }
+            image_part = types.Part.from_bytes(
+                data=image_bytes,
+                mime_type="image/jpeg",
+            )
 
-            response = await model.generate_content_async(
-                [PROMPT_ANALYSE_ETIQUETTE, image_data]
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
             )
 
             raw_text = response.text.strip()
