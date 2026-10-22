@@ -44,9 +44,9 @@ class SommelierAIEngine:
                 mime_type="image/jpeg",
             )
 
-            # Nom du modele officiel Gemini 2.0 Flash
+            # Utilisation du modèle valide gemini-1.5-flash
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-1.5-flash",
                 contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
             )
 
@@ -57,10 +57,6 @@ class SommelierAIEngine:
                 raw_text = raw_text[:-3]
 
             return json.loads(raw_text.strip())
-
-        except Exception as err:
-            _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
-            return {"error": str(err)}
 
         except Exception as err:
             _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
