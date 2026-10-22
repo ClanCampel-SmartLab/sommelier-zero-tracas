@@ -6,5 +6,5 @@
   "documentation": "https://github.com/ClanCampel-SmartLab/sommelier-zero-tracas",
   "iot_class": "cloud_polling",
   "requirements": ["google-genai"],
-  "version": "1.1.4"
+  "version": "1.1.7"
 }
