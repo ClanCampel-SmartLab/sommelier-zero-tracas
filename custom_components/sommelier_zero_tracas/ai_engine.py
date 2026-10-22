@@ -38,7 +38,6 @@ class SommelierAIEngine:
         from google import genai
         from google.genai import types
 
-        # Forcer la version v1 de l'API pour éviter les erreurs v1beta 404
         client = genai.Client(
             api_key=self.api_key,
             http_options=types.HttpOptions(api_version="v1"),
