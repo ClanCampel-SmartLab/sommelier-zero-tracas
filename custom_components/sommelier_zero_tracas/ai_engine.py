@@ -46,11 +46,16 @@ class SommelierAIEngine:
                 mime_type="image/jpeg",
             )
 
-            # Execution synchrone de la requête dans un thread hors boucle HA
+            # Configuration pour désactiver l'AFC et supprimer l'avertissement Google
+            config = types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+            )
+
             def _call_gemini():
                 return client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-1.5-flash",
                     contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
+                    config=config,
                 )
 
             response = await asyncio.to_thread(_call_gemini)
@@ -66,7 +71,6 @@ class SommelierAIEngine:
         except Exception as err:
             _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
             return {"error": str(err)}
-
         except Exception as err:
             _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
             return {"error": str(err)}
