@@ -6,13 +6,14 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
 
-from .ai_engine import SommelierAIEngine
-
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "sommelier_zero_tracas"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configuration de l'intégration depuis l'UI."""
+    # Import différé pour éviter de bloquer le config_flow en cas de problème dans ai_engine
+    from .ai_engine import SommelierAIEngine
+
     api_key = entry.data.get("api_key")
     ai_engine = SommelierAIEngine(api_key)
 
@@ -23,7 +24,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     async def handle_scan_etiquette(call: ServiceCall):
-        """Service pour scanner une image de vin enregistrée sur le serveur HA."""
         image_path = call.data.get("image_path")
         if not os.path.exists(image_path):
             _LOGGER.error("Fichier image introuvable : %s", image_path)
@@ -48,6 +48,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+    return unload_ok
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Déchargement de l'intégration."""
