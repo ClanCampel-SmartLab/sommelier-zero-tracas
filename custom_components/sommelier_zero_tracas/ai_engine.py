@@ -1,6 +1,7 @@
 """Moteur d'intelligence artificielle Gemini pour Sommelier Zero Tracas."""
 import logging
 import json
+import google.generativeai as genai
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,20 +31,18 @@ class SommelierAIEngine:
     def __init__(self, api_key: str):
         """Initialise le moteur avec la clé API."""
         self.api_key = api_key
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
 
     async def analyze_wine_label(self, image_bytes: bytes) -> dict:
         """Envoie l'image de l'étiquette à Gemini et retourne les données du vin."""
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-
             image_data = {
                 "mime_type": "image/jpeg",
                 "data": image_bytes
             }
 
-            response = await model.generate_content_async(
+            response = await self.model.generate_content_async(
                 [PROMPT_ANALYSE_ETIQUETTE, image_data]
             )
 
