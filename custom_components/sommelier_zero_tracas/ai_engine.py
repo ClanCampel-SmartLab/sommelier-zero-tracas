@@ -1,6 +1,7 @@
 """Moteur d'intelligence artificielle Gemini pour Sommelier Zero Tracas."""
-import logging
+import asyncio
 import json
+import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ Réponds EXCLUSIVEMENT sous la forme d'un objet JSON valide sans balises Markdow
 Si une information est illisible ou absente, met la valeur null.
 """
 
+
 class SommelierAIEngine:
     """Gestionnaire des appels à l'API Gemini via google-genai."""
 
@@ -44,11 +46,14 @@ class SommelierAIEngine:
                 mime_type="image/jpeg",
             )
 
-            # Nom complet du modèle requis par l'API
-            response = client.models.generate_content(
-                model="models/gemini-1.5-flash",
-                contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
-            )
+            # Execution synchrone de la requête dans un thread hors boucle HA
+            def _call_gemini():
+                return client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[PROMPT_ANALYSE_ETIQUETTE, image_part],
+                )
+
+            response = await asyncio.to_thread(_call_gemini)
 
             raw_text = response.text.strip()
             if raw_text.startswith("```json"):
