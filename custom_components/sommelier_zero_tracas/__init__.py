@@ -1,4 +1,4 @@
-"""Initialisation de l'integration Sommelier Zero Tracas."""
+"""Initialisation de l'intégration Sommelier Zero Tracas."""
 import logging
 import os
 import homeassistant.helpers.config_validation as cv
@@ -12,7 +12,7 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = "sommelier_zero_tracas"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Configuration de l'integration depuis l'UI."""
+    """Configuration de l'intégration depuis l'UI."""
     api_key = entry.data.get("api_key")
     ai_engine = SommelierAIEngine(api_key)
 
@@ -23,7 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     async def handle_scan_etiquette(call: ServiceCall):
-        """Service pour scanner une image de vin enregistree sur le serveur HA."""
+        """Service pour scanner une image de vin enregistrée sur le serveur HA."""
         image_path = call.data.get("image_path")
         if not os.path.exists(image_path):
             _LOGGER.error("Fichier image introuvable : %s", image_path)
@@ -33,9 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             img_bytes = img_file.read()
 
         res = await ai_engine.analyze_wine_label(img_bytes)
-        _LOGGER.info("Resultat de l'analyse Gemini : %s", res)
-        
-        # Publication d'un evenement Home Assistant avec le resultat
+        _LOGGER.info("Résultat de l'analyse Gemini : %s", res)
+
         hass.bus.async_fire("sommelier_wine_scanned", {"result": res})
 
     hass.services.async_register(
@@ -51,7 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Dechargement de l'integration."""
+    """Déchargement de l'intégration."""
     unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
