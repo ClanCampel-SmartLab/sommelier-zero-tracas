@@ -30,20 +30,14 @@ class SommelierAIEngine:
     def __init__(self, api_key: str):
         """Initialise le moteur avec la clé API."""
         self.api_key = api_key
-        self._genai = None
-
-    def _get_genai(self):
-        """Charge le module google.generativeai à la demande."""
-        if self._genai is None:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self._genai = genai
-        return self._genai
 
     async def analyze_wine_label(self, image_bytes: bytes) -> dict:
         """Envoie l'image de l'étiquette à Gemini et retourne les données du vin."""
         try:
-            genai = self._get_genai()
+            # Import différé : s'exécute seulement au scan, pas au lancement de HA
+            import google.generativeai as genai
+
+            genai.configure(api_key=self.api_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
 
             image_data = {
@@ -56,16 +50,6 @@ class SommelierAIEngine:
             )
 
             raw_text = response.text.strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-
-            return json.loads(raw_text.strip())
-
-        except Exception as err:
-            _LOGGER.error("Erreur lors de l'analyse Gemini : %s", err)
-            return {"error": str(err)}
             if raw_text.startswith("```json"):
                 raw_text = raw_text[7:]
             if raw_text.endswith("```"):
