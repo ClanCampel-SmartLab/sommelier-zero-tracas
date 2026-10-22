@@ -1,62 +1,102 @@
-"""Initialisation de l'intégration Sommelier Zero Tracas."""
+"""Intégration Sommelier Zero Tracas pour Home Assistant."""
+
 import logging
-import os
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall
+
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
+
+from .ai_engine import SommelierAIEngine
+from .storage import SommelierStorage
 
 _LOGGER = logging.getLogger(__name__)
+
 DOMAIN = "sommelier_zero_tracas"
+SERVICE_SCAN_WINE = "scan_wine"
+
+SERVICE_SCAN_SCHEMA = vol.Schema(
+    {
+        vol.Required("image_path"): cv.string,
+        vol.Optional("quantite", default=1): cv.positive_int,
+    }
+)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Configuration de l'intégration depuis l'UI."""
-    from .ai_engine import SommelierAIEngine
-
+    """Initialise l'intégration depuis une entrée de configuration."""
     api_key = entry.data.get("api_key")
-    ai_engine = SommelierAIEngine(api_key)
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        "engine": ai_engine,
-        "inventory": []
+    if not api_key:
+        _LOGGER.error("Clé API Gemini manquante.")
+        return False
+
+    ai_engine = SommelierAIEngine(api_key=api_key)
+    storage = SommelierStorage(hass)
+
+    # Chargement de la base de données locale JSON
+    await storage.async_load()
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "ai_engine": ai_engine,
+        "storage": storage,
     }
 
-    async def handle_scan_etiquette(call: ServiceCall):
-        image_path = call.data.get("image_path")
+    async def handle_scan_wine(call: ServiceCall) -> None:
+        """Service pour scanner une étiquette et l'ajouter automatiquement à la cave."""
+        image_path = call.data["image_path"]
+        quantite = call.data.get("quantite", 1)
 
-        def read_file():
-            if not os.path.exists(image_path):
-                return None
-            with open(image_path, "rb") as img_file:
-                return img_file.read()
+        try:
+            # Lecture du fichier image
+            def read_image():
+                with open(image_path, "rb") as image_file:
+                    return image_file.read()
 
-        # Execute la lecture du fichier hors du thread principal pour eviter le warning HA
-        img_bytes = await hass.async_add_executor_job(read_file)
-
-        if img_bytes is None:
-            _LOGGER.error("Fichier image introuvable : %s", image_path)
+            image_bytes = await hass.async_add_executor_job(read_image)
+        except Exception as err:
+            _LOGGER.error("Impossible de lire l'image %s : %s", image_path, err)
             return
 
-        res = await ai_engine.analyze_wine_label(img_bytes)
-        _LOGGER.info("Résultat de l'analyse Gemini : %s", res)
+        # Analyse par Gemini
+        res_ai = await ai_engine.analyze_wine_label(image_bytes)
 
-        hass.bus.async_fire("sommelier_wine_scanned", {"result": res})
+        if "error" in res_ai:
+            _LOGGER.error("Échec de l'analyse IA : %s", res_ai["error"])
+            return
 
+        # Sauvegarde ou incrémentation en cave via storage
+        wine_entry = await storage.async_add_or_update_wine(
+            wine_info=res_ai, quantite_ajout=quantite
+        )
+
+        _LOGGER.info(
+            "Résultat de l'analyse Gemini enregistrée en cave : %s", wine_entry
+        )
+
+        # Notification événementielle dans HA (pour automatisations / cartes Lovelace)
+        hass.bus.async_fire(
+            f"{DOMAIN}_wine_scanned",
+            {"wine": wine_entry},
+        )
+
+    # Enregistrement du service dans Home Assistant
     hass.services.async_register(
         DOMAIN,
-        "scan_etiquette",
-        handle_scan_etiquette,
-        schema=vol.Schema({
-            vol.Required("image_path"): cv.string,
-        })
+        SERVICE_SCAN_WINE,
+        handle_scan_wine,
+        schema=SERVICE_SCAN_SCHEMA,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    """Décharge l'intégration."""
+    unload_ok = await hass.config_entries.async_unload_platforms(
+        entry, ["sensor"]
+    )
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
