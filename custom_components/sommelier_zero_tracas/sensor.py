@@ -1,36 +1,36 @@
-"""Capteur d'inventaire pour Sommelier Zero Tracas."""
-from homeassistant.helpers.entity import Entity
+"""Capteur pour Sommelier Zero Tracas."""
+import logging
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from .ai_engine import SommelierAIEngine
 
-DOMAIN = "sommelier_zero_tracas"
+_LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Configuration du capteur de cave."""
-    api_key = config_entry.data.get("api_key")
-    ai_engine = SommelierAIEngine(api_key)
-    
-    sensor = SommelierWineCellarSensor(hass, ai_engine)
-    async_add_entities([sensor], True)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Configuration de la plateforme de capteur."""
+    async_add_entities([SommelierCaveSensor(entry)], True)
 
-class SommelierWineCellarSensor(Entity):
-    """Représente l'état de la cave à vin."""
+class SommelierCaveSensor(SensorEntity):
+    """Capteur représentant le statut de la cave."""
 
-    def __init__(self, hass, ai_engine):
-        self.hass = hass
-        self.ai_engine = ai_engine
-        self._state = 0
-        self._attr_unique_id = "sommelier_wine_cellar_total"
-        self._attr_name = "Sommelier Cave à Vin"
+    def __init__(self, entry: ConfigEntry):
+        """Initialisation du capteur."""
+        self._attr_name = "Sommelier Zero Tracas Cave"
+        self._attr_unique_id = f"{entry.entry_id}_cave"
         self._attr_icon = "mdi:wine"
-
-    @property
-    def state(self):
-        return self._state
+        self._attr_native_value = 0
 
     @property
     def extra_state_attributes(self):
+        """Attributs supplémentaires du capteur."""
         return {
-            "version": "1.0.0",
-            "statut": "Prêt pour le scan",
-            "derniere_analyse": "Aucune"
+            "statut": "Opérationnel",
+            "bouteilles_totales": 0
         }
