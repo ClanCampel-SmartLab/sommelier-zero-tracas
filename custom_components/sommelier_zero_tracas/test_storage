@@ -1,0 +1,111 @@
+"""Tests isoles, sans installation Home Assistant."""
+import asyncio
+import copy
+import importlib.util
+from pathlib import Path
+import sys
+import types
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+BASE = ROOT / "custom_components" / "sommelier_zero_tracas"
+
+class FakeStore:
+    def __init__(self,*args):
+        self.value = None
+        self.fail = False
+    async def async_load(self):
+        return copy.deepcopy(self.value)
+    async def async_save(self,data):
+        if self.fail:
+            raise OSError("disque indisponible")
+        self.value = copy.deepcopy(data)
+
+fake = types.ModuleType("homeassistant.helpers.storage")
+fake.Store = FakeStore
+sys.modules.setdefault("homeassistant",types.ModuleType("homeassistant"))
+sys.modules.setdefault("homeassistant.helpers",types.ModuleType("homeassistant.helpers"))
+sys.modules["homeassistant.helpers.storage"] = fake
+package = types.ModuleType("szt_test")
+package.__path__ = [str(BASE)]
+sys.modules["szt_test"] = package
+for name in ("const","storage","ai_engine"):
+    spec = importlib.util.spec_from_file_location("szt_test."+name,BASE/(name+".py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+Storage = sys.modules["szt_test.storage"].SommelierStorage
+clean = sys.modules["szt_test.storage"].clean_info
+
+class StorageTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.s = Storage(None)
+        await self.s.load()
+        self.info = {"domaine":"Domaine Test","cuvee":"Essai","millesime":2022,"categorie":"Rouge"}
+    async def add(self,qty=2):
+        return await self.s.mutate("add",{"wine":self.info,"quantity":qty},"user")
+    async def test_add_remove_review(self):
+        w = await self.add()
+        await self.s.mutate("remove",{"id":w["id"],"quantity":1},"user")
+        await self.s.mutate("review",{"id":w["id"],"note":4,"avis":"aime","rachat":True},"user")
+        self.assertEqual(self.s.data["vins"][0]["quantite"],1)
+        self.assertEqual(self.s.history()[0]["note"],4)
+    async def test_no_negative(self):
+        w = await self.add(1)
+        with self.assertRaises(ValueError):
+            await self.s.mutate("remove",{"id":w["id"],"quantity":2},"user")
+        self.assertEqual(self.s.data["vins"][0]["quantite"],1)
+    async def test_no_implicit_merge(self):
+        await self.add()
+        await self.add()
+        self.assertEqual(len(self.s.data["vins"]),2)
+    async def test_explicit_restock(self):
+        w = await self.add()
+        await self.s.mutate("add",{"id":w["id"],"wine":self.info,"quantity":3},"user")
+        self.assertEqual(self.s.data["vins"][0]["quantite"],5)
+    async def test_undo_and_double_undo(self):
+        w = await self.add()
+        await self.s.mutate("remove",{"id":w["id"],"quantity":1},"user")
+        movement = self.s.data["mouvements"][-1]
+        await self.s.mutate("undo",{"id":movement["id"]},"user")
+        self.assertEqual(self.s.data["vins"][0]["quantite"],2)
+        with self.assertRaises(ValueError):
+            await self.s.mutate("undo",{"id":movement["id"]},"user")
+    async def test_rollback_on_save_error(self):
+        w = await self.add()
+        self.s.store.fail=True
+        with self.assertRaises(OSError):
+            await self.s.mutate("remove",{"id":w["id"],"quantity":1},"user")
+        self.assertEqual(self.s.data["vins"][0]["quantite"],2)
+    async def test_migration_keeps_unknown_white(self):
+        s = Storage(None)
+        s.store.value={"vins":[{"id":"old","domaine":"Ancien","couleur":"Blanc","quantite":4,"note":5}]}
+        await s.load()
+        self.assertIsNone(s.data["vins"][0]["categorie"])
+        self.assertEqual(s.data["vins"][0]["note"],5)
+        self.assertEqual(s.data["vins"][0]["quantite"],4)
+    async def test_unknown_cannot_add(self):
+        with self.assertRaises(ValueError):
+            await self.s.mutate("add",{"wine":{},"quantity":1},"user")
+    async def test_wish_no_stock(self):
+        await self.s.mutate("wish",{"wine":self.info},"user")
+        self.assertEqual(len(self.s.data["envies"]),1)
+        self.assertEqual(len(self.s.data["vins"]),0)
+    async def test_parallel_restock(self):
+        w = await self.add(1)
+        await asyncio.gather(*[self.s.mutate("add",{"id":w["id"],"wine":self.info,"quantity":1},"user") for _ in range(10)])
+        self.assertEqual(self.s.data["vins"][0]["quantite"],11)
+    async def test_undo_purchase_cannot_negative(self):
+        w = await self.add(1)
+        move = self.s.data["mouvements"][0]
+        await self.s.mutate("remove",{"id":w["id"],"quantity":1},"user")
+        with self.assertRaises(ValueError):
+            await self.s.mutate("undo",{"id":move["id"]},"user")
+    async def test_cleans_price_and_types(self):
+        result=clean({"domaine":"Test","millesime":True,"categorie":"Blanc","prix_estime_min":float("nan"),"prix_estime_max":30})
+        self.assertIsNone(result["categorie"])
+        self.assertIsNone(result["millesime"])
+        self.assertIsNone(result["prix_estime_min"])
+
+if __name__ == "__main__":
+    unittest.main()
