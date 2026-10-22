@@ -1,11 +1,3 @@
-"""Moteur d'intelligence artificielle Gemini pour Sommelier Zero Tracas."""
-
-import asyncio
-import json
-import logging
-
-_LOGGER = logging.getLogger(__name__)
-
 # Alias de modele : sa version cible peut evoluer chez Google.
 GEMINI_MODEL = "gemini-flash-latest"
 
@@ -24,7 +16,7 @@ avec exactement les cles suivantes :
   "millesime": 2020,
   "appellation": "AOP/AOC/IGP, par exemple Saint-Emilion",
   "region": "Region viticole, par exemple Bordeaux",
-  "couleur": "Rouge, Blanc, Rose ou Etincelant",
+  "categorie": "Rouge, Blanc sec, Blanc moelleux, Rose, ou Champagne/Effervescent",
   "cepages": ["Cepage 1", "Cepage 2"],
   "garde_conseillee_annees": "Plage d'apogee, par exemple 2025-2030",
   "accord_mets": ["Accord 1", "Accord 2"],
@@ -35,6 +27,7 @@ Regles :
 - Si une information factuelle est illisible, absente ou incertaine,
   utilise la valeur JSON null, et non la chaine de caracteres "null".
 - Le millesime doit etre un nombre entier ou null.
+- La categorie doit OBLIGATOIREMENT etre l'une de ces 5 valeurs : "Rouge", "Blanc sec", "Blanc moelleux", "Rose", "Champagne/Effervescent", ou null si indeterminable.
 - Les cepages doivent etre une liste de textes ou null.
 - Les accords mets doivent etre une liste de textes ou null.
 - Les recommandations de garde, les accords et la description sont
@@ -116,7 +109,7 @@ class SommelierAIEngine:
                 "millesime",
                 "appellation",
                 "region",
-                "couleur",
+                "categorie",
                 "cepages",
                 "garde_conseillee_annees",
                 "accord_mets",
